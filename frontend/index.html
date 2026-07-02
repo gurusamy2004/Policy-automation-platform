@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Policy Automation Dashboard</title>
+<style>
+  :root {
+    --navy: #1f3864;
+    --gray: #555;
+    --bg: #f7f8fa;
+    --green: #1e8e3e;
+    --red: #c5221f;
+    --amber: #b06000;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: var(--bg); color: #222; }
+  header { background: var(--navy); color: white; padding: 20px 32px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; opacity: 0.85; font-size: 13px; }
+  main { max-width: 1000px; margin: 24px auto; padding: 0 20px; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .card h2 { margin-top: 0; font-size: 16px; color: var(--navy); }
+  textarea { width: 100%; min-height: 160px; font-family: monospace; font-size: 13px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+  button { background: var(--navy); color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: #eee; color: #333; }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
+  th { color: var(--gray); font-weight: 600; }
+  .badge { padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.auto_resolve { background: #e6f4ea; color: var(--green); }
+  .badge.escalate { background: #fce8e6; color: var(--red); }
+  .badge.no_match { background: #fef7e0; color: var(--amber); }
+  .summary { display: flex; gap: 20px; margin-top: 14px; }
+  .summary .stat { text-align: center; }
+  .summary .stat .num { font-size: 26px; font-weight: 700; color: var(--navy); }
+  .summary .stat .label { font-size: 12px; color: var(--gray); }
+  #status { font-size: 13px; color: var(--gray); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Policy Automation Dashboard</h1>
+  <p>Define policy rules as JSON &middot; run them against support tickets &middot; see what auto-resolves vs escalates</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>1. Policy Ruleset (JSON)</h2>
+    <textarea id="rulesInput"></textarea>
+    <div class="row">
+      <input id="rulesetName" placeholder="Ruleset name (e.g. default_support_policy)" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:6px;" />
+      <button onclick="saveRuleset()">Save Ruleset</button>
+      <button class="secondary" onclick="loadSampleRules()">Load Sample</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Evaluate Tickets</h2>
+    <div class="row">
+      <select id="rulesetSelect" style="padding:8px; border:1px solid #ddd; border-radius:6px; flex:1;"></select>
+      <button onclick="evaluateTickets()">Run Evaluation</button>
+    </div>
+
+    <div class="summary" id="summary"></div>
+
+    <table id="resultsTable">
+      <thead>
+        <tr><th>Ticket ID</th><th>City</th><th>Category</th><th>Priority</th><th>Wait (min)</th><th>Outcome</th><th>Matched Rule</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+const API = "http://localhost:4000/api";
+let ticketsCache = [];
+
+const SAMPLE_RULES = [
+  {
+    name: "auto_resolve_low_priority_short_wait",
+    conditions: [
+      { field: "priority", operator: "equals", value: "low" },
+      { field: "wait_time_minutes", operator: "lte", value: 10 }
+    ],
+    match: "all",
+    action: "auto_resolve"
+  },
+  {
+    name: "escalate_safety_issues",
+    conditions: [{ field: "category", operator: "equals", value: "safety" }],
+    match: "all",
+    action: "escalate"
+  },
+  {
+    name: "escalate_long_wait",
+    conditions: [{ field: "wait_time_minutes", operator: "gt", value: 60 }],
+    match: "any",
+    action: "escalate"
+  }
+];
+
+function loadSampleRules() {
+  document.getElementById("rulesInput").value = JSON.stringify(SAMPLE_RULES, null, 2);
+  document.getElementById("rulesetName").value = "default_support_policy";
+}
+
+async function saveRuleset() {
+  const name = document.getElementById("rulesetName").value.trim();
+  const statusEl = document.getElementById("status");
+  let rules;
+  try {
+    rules = JSON.parse(document.getElementById("rulesInput").value);
+  } catch (e) {
+    statusEl.textContent = "Invalid JSON: " + e.message;
+    statusEl.style.color = "var(--red)";
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, rules }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save.");
+    statusEl.textContent = `Saved ruleset '${data.name}' (id ${data.id}).`;
+    statusEl.style.color = "var(--green)";
+    await loadRulesetOptions();
+  } catch (e) {
+    statusEl.textContent = e.message;
+    statusEl.style.color = "var(--red)";
+  }
+}
+
+async function loadRulesetOptions() {
+  const res = await fetch(`${API}/rules`);
+  const rulesets = await res.json();
+  const select = document.getElementById("rulesetSelect");
+  select.innerHTML = rulesets.map(r => `<option value="${r.id}">${r.name} (id ${r.id})</option>`).join("");
+}
+
+async function evaluateTickets() {
+  const rulesetId = document.getElementById("rulesetSelect").value;
+  if (!rulesetId) return;
+  const res = await fetch(`${API}/tickets/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rulesetId: Number(rulesetId) }),
+  });
+  const data = await res.json();
+  renderSummary(data.summary, data.totalEvaluated);
+  renderResults(data.results);
+}
+
+function renderSummary(summary, total) {
+  const el = document.getElementById("summary");
+  const entries = Object.entries(summary);
+  el.innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="label">Total Evaluated</div></div>
+    ${entries.map(([k, v]) => `<div class="stat"><div class="num">${v}</div><div class="label">${k.replace('_',' ')}</div></div>`).join("")}
+  `;
+}
+
+async function renderResults(results) {
+  if (!ticketsCache.length) {
+    const res = await fetch(`${API}/tickets`);
+    ticketsCache = await res.json();
+  }
+  const byId = Object.fromEntries(ticketsCache.map(t => [t.id, t]));
+  const tbody = document.querySelector("#resultsTable tbody");
+  tbody.innerHTML = results.map(r => {
+    const t = byId[r.ticketId] || {};
+    return `<tr>
+      <td>${r.ticketId}</td>
+      <td>${t.city || "-"}</td>
+      <td>${t.category || "-"}</td>
+      <td>${t.priority || "-"}</td>
+      <td>${t.wait_time_minutes ?? "-"}</td>
+      <td><span class="badge ${r.outcome}">${r.outcome.replace('_',' ')}</span></td>
+      <td>${r.matchedRuleName || "-"}</td>
+    </tr>`;
+  }).join("");
+}
+
+loadSampleRules();
+loadRulesetOptions();
+</script>
+</body>
+</html>
