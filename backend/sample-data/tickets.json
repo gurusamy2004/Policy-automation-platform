@@ -1,0 +1,10 @@
+[
+  { "city": "Chennai", "category": "fare_dispute", "priority": "low", "wait_time_minutes": 4, "payload": {} },
+  { "city": "Chennai", "category": "safety", "priority": "low", "wait_time_minutes": 2, "payload": {} },
+  { "city": "Mumbai", "category": "lost_item", "priority": "medium", "wait_time_minutes": 15, "payload": {} },
+  { "city": "Bangalore", "category": "billing", "priority": "medium", "wait_time_minutes": 25, "payload": {} },
+  { "city": "Delhi", "category": "fare_dispute", "priority": "high", "wait_time_minutes": 70, "payload": {} },
+  { "city": "Chennai", "category": "lost_item", "priority": "high", "wait_time_minutes": 12, "payload": {} },
+  { "city": "Mumbai", "category": "safety", "priority": "high", "wait_time_minutes": 90, "payload": {} },
+  { "city": "Bangalore", "category": "fare_dispute", "priority": "low", "wait_time_minutes": 8, "payload": {} }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "name": "auto_resolve_low_priority_short_wait",
+    "conditions": [
+      { "field": "priority", "operator": "equals", "value": "low" },
+      { "field": "wait_time_minutes", "operator": "lte", "value": 10 }
+    ],
+    "match": "all",
+    "action": "auto_resolve"
+  },
+  {
+    "name": "escalate_safety_issues",
+    "conditions": [
+      { "field": "category", "operator": "equals", "value": "safety" }
+    ],
+    "match": "all",
+    "action": "escalate"
+  },
+  {
+    "name": "escalate_long_wait",
+    "conditions": [
+      { "field": "wait_time_minutes", "operator": "gt", "value": 60 }
+    ],
+    "match": "any",
+    "action": "escalate"
+  },
+  {
+    "name": "auto_resolve_lost_item_medium",
+    "conditions": [
+      { "field": "category", "operator": "equals", "value": "lost_item" },
+      { "field": "priority", "operator": "in", "value": ["low", "medium"] }
+    ],
+    "match": "all",
+    "action": "auto_resolve"
+  }
+]
